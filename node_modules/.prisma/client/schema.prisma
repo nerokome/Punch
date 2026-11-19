@@ -1,0 +1,279 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model OfficeLocation {
+  id        String @id @default(uuid())
+  name      String
+  address   String
+  latitude  Float?
+  longitude Float?
+  radius    Float  @default(100)
+
+  users       User[]
+  shifts      Shift[]
+  attendance  AttendanceRecord[]
+  qrTokens    QRToken[]
+  adminAccess AdminOfficeAccess[] @relation("AdminOffices")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Shift {
+  id        String         @id @default(uuid())
+  name      String
+  startTime String
+  endTime   String
+  officeId  String
+  office    OfficeLocation @relation(fields: [officeId], references: [id])
+  users     User[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+}
+
+model User {
+  id    String  @id @default(uuid())
+  name  String
+  email String  @unique
+  phone String?
+
+  role Role @default(AGENT)
+
+  // Required in practice for AGENTs (one office). For ADMIN/SUPER_ADMIN,
+  // this can stay null — their offices live in AdminOfficeAccess instead.
+  officeId String?
+  password String
+  gender   GenderEnum
+
+  isActive           KYCStatus @default(active)
+  isVerified         Boolean   @default(false)
+  isDeleted          Boolean   @default(false)
+  deviceId           String?   @unique
+  deviceRegisteredAt DateTime?
+
+  shiftId String?
+
+  office OfficeLocation? @relation(fields: [officeId], references: [id])
+  shift  Shift?          @relation(fields: [shiftId], references: [id])
+
+  attendance    AttendanceRecord[]
+  workSchedules WorkSchedule[]
+
+  leaveRequests  LeaveRequest[] @relation("EmployeeLeaves")
+  approvedLeaves LeaveRequest[] @relation("ApproverLeaves")
+
+  // Only populated when role is ADMIN or SUPER_ADMIN
+  adminOfficeAccess AdminOfficeAccess[] @relation("AdminOffices")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([officeId])
+  @@index([shiftId])
+  @@index([role])
+}
+
+model AttendanceRecord {
+  id String @id @default(uuid())
+
+  userId   String
+  officeId String
+
+  method AttendanceMethod
+
+  clockIn  DateTime
+  clockOut DateTime?
+
+  qrTokenId String?
+
+  status AttendanceStatus @default(NOT_CLOCKED_IN)
+
+  clockInLat Float?
+  clockInLng Float?
+
+  clockOutLat Float?
+  clockOutLng Float?
+
+  user User @relation(fields: [userId], references: [id])
+
+  office OfficeLocation @relation(fields: [officeId], references: [id])
+
+  qrToken QRToken? @relation(fields: [qrTokenId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([officeId])
+  @@index([clockIn])
+  @@index([userId, clockIn])
+}
+
+model QRToken {
+  id String @id @default(uuid())
+
+  token String @unique
+
+  type AttendanceType
+
+  officeId String
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  isUsed Boolean @default(false)
+
+  office OfficeLocation @relation(fields: [officeId], references: [id])
+
+  usedBy AttendanceRecord[]
+
+  @@index([officeId])
+}
+
+model WorkSchedule {
+  id String @id @default(uuid())
+
+  userId String
+
+  officeDays DayOfWeek[]
+
+  workMode AttendanceDayStatus @default(PRESENT)
+
+  effectiveFrom DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, workMode, effectiveFrom])
+  @@index([userId])
+}
+
+model LeaveRequest {
+  id String @id @default(uuid())
+
+  userId       String
+  approvedById String?
+
+  startDate DateTime
+  endDate   DateTime
+
+  leaveType LeaveType
+
+  reason String?
+
+  status LeaveStatus @default(PENDING)
+
+  approvedAt      DateTime?
+  rejectionReason String?
+
+  employee   User  @relation("EmployeeLeaves", fields: [userId], references: [id], onDelete: Cascade)
+  approvedBy User? @relation("ApproverLeaves", fields: [approvedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([approvedById])
+  @@index([startDate, endDate])
+}
+
+model AdminOfficeAccess {
+  id       String @id @default(uuid())
+  adminId  String
+  officeId String
+
+  admin  User           @relation("AdminOffices", fields: [adminId], references: [id], onDelete: Cascade)
+  office OfficeLocation @relation("AdminOffices", fields: [officeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([adminId, officeId])
+  @@index([adminId])
+  @@index([officeId])
+}
+
+enum DayOfWeek {
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+  SUN
+}
+
+enum AttendanceDayStatus {
+  PRESENT
+  WFH
+  ON_LEAVE
+  ABSENT
+}
+
+enum AttendanceType {
+  CHECK_IN
+  CHECK_OUT
+}
+
+enum AttendanceMethod {
+  ONSITE
+  MANUAL
+}
+
+enum AttendanceStatus {
+  NOT_CLOCKED_IN
+  ON_TIME
+  EARLY
+  LATE
+  ABSENT
+  TRAVELED
+  NOT_AVAILABLE
+  WFH
+  ON_LEAVE
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  MATERNITY
+  PATERNITY
+  UNPAID
+  OTHER
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum Role {
+  ADMIN
+  SUPER_ADMIN
+  AGENT
+}
+
+enum GenderEnum {
+  Male
+  Female
+}
+
+enum KYCStatus {
+  active
+  deactivated
+  resigned
+}
