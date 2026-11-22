@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "jest --watchAll --no-cache",
-    "build": "prisma generate && tsc -p .",
+    "build": "node ./node_modules/prisma/build/index.js generate && tsc -p .",
     "dev": "nodemon --exec ts-node --transpile-only ./src/index.ts",
     "reset:db": "npx prisma migrate reset",
     "start": "node ./dist/index.js",
