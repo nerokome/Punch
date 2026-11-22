@@ -660,7 +660,21 @@ type RecordLite = {
   clockIn: Date;
   clockOut: Date | null;
   status: AttendanceStatus;
+  outsideSince?: Date | null;
+  outsideDurationMs?: number;
 
+};
+
+const getWorkedDurationMs = (record: {
+  clockIn: Date;
+  clockOut: Date | null;
+  outsideSince?: Date | null;
+  outsideDurationMs?: number;
+}, at = new Date()): number => {
+  const end = record.clockOut ?? at;
+  const outsideMs = (record.outsideDurationMs ?? 0) +
+    (record.outsideSince ? Math.max(0, end.getTime() - record.outsideSince.getTime()) : 0);
+  return Math.max(0, end.getTime() - record.clockIn.getTime() - outsideMs);
 };
 
 type LeaveLite = {
@@ -738,6 +752,7 @@ const buildDaysBreakdown = (
     : resolveDayStatus(workMode, record),
       clockIn: record?.clockIn ?? null,
       clockOut: record?.clockOut ?? null,
+      workedDurationMs: record ? getWorkedDurationMs(record) : 0,
       method: record?.method ?? null,
     };
   });
@@ -1079,7 +1094,10 @@ export const getAllAttendanceRecordsService = async (
       total,
       pages,
       currentPage: page,
-      data,
+      data: data.map((record) => ({
+        ...record,
+        workedDurationMs: getWorkedDurationMs(record),
+      })),
     };
   } catch (error) {
     throw new BadRequestError("Failed to get records");
@@ -1173,7 +1191,10 @@ export const getUserAllAttendanceRecordsService = async (
       total,
       pages,
       currentPage: page,
-      data,
+      data: data.map((record) => ({
+        ...record,
+        workedDurationMs: getWorkedDurationMs(record),
+      })),
     };
   } catch (error) {
     throw new BadRequestError("Failed to get user records");
@@ -1291,6 +1312,8 @@ export const getUsersWithAttendance = async (
               method: true,
               clockIn: true,
               clockOut: true,
+              outsideSince: true,
+              outsideDurationMs: true,
               status: true,
               createdAt: true,
             },
@@ -1324,9 +1347,14 @@ export const getUsersWithAttendance = async (
           leaveRequests as LeaveLite[],
         );
 
+        const attendanceWithDuration = attendance.map((record) => ({
+          ...record,
+          workedDurationMs: getWorkedDurationMs(record),
+        }));
+
         return {
           ...user,
-          attendance,
+          attendance: attendanceWithDuration,
           leaveRequests,
           status: days.length === 1 ? days[0].status : undefined,
           days,
@@ -1440,6 +1468,8 @@ export const getOfficeUsersWithAttendance = async (
             method: true,
             clockIn: true,
             clockOut: true,
+            outsideSince: true,
+            outsideDurationMs: true,
             status: true,
           },
         },
@@ -1454,9 +1484,14 @@ export const getOfficeUsersWithAttendance = async (
         leaveRequests,
       );
 
+      const attendanceWithDuration = attendance.map((record) => ({
+        ...record,
+        workedDurationMs: getWorkedDurationMs(record),
+      }));
+
       return {
         ...user,
-        attendance,
+        attendance: attendanceWithDuration,
         status: days.length === 1 ? days[0].status : undefined,
         days,
       };
