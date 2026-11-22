@@ -6,7 +6,7 @@ const helpers_1 = require("../helpers");
 const errors_1 = require("../errors");
 const services_1 = require("../services");
 const client_1 = require("@prisma/client");
-const helpers_2 = require("../helpers");
+const utils_1 = require("../utils");
 const user_service_1 = require("../services/user-service");
 const organization_access_1 = require("../helpers/organization-access");
 const registerUserController = async (req, res) => {
@@ -91,7 +91,8 @@ const updateUserProfilePictureController = async (req, res) => {
         throw new errors_1.BadRequestError("User not authorized");
     if (!req.file)
         throw new errors_1.BadRequestError("Choose a profile picture to upload");
-    const profilePictureUrl = (0, helpers_2.absoluteAssetUrl)(req, `/profiles/${req.file.filename}`);
+    const uploaded = await (0, utils_1.uploadImageBuffer)(req.file.buffer, "profiles");
+    const profilePictureUrl = uploaded.secure_url;
     const user = await (0, user_service_1.updateUserProfilePictureService)(req.currentUser.id, profilePictureUrl);
     (0, helpers_1.successResponse)(res, http_status_codes_1.StatusCodes.OK, {
         message: "Profile picture updated",

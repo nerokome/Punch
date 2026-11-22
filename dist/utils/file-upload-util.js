@@ -5,9 +5,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.uploadProfilePicture = exports.uploadOrganizationImage = exports.uploadCsvExcel = exports.csvExcelFilter = exports.uploadType = exports.imageAndVideoFilter = exports.videoFilter = exports.pdfImageFilter = exports.pdfFilter = exports.imageFilter = void 0;
 const multer_1 = __importDefault(require("multer"));
-const fs_1 = __importDefault(require("fs"));
-const path_1 = __importDefault(require("path"));
-const uuid_1 = require("uuid");
 const imageFilter = (req, file, cb) => {
     // Accept images only
     if (!file.originalname.match(/\.(jpg|JPG|jpeg|JPEG|png|PNG|gif|GIF)$/)) {
@@ -74,18 +71,8 @@ exports.uploadCsvExcel = (0, multer_1.default)({
     fileFilter: exports.csvExcelFilter,
     limits: { fileSize: 5 * 1024 * 1024 },
 });
-const organizationUploadDir = path_1.default.resolve(process.cwd(), "src/resources/static/assets/uploads/organizations");
-fs_1.default.mkdirSync(organizationUploadDir, { recursive: true });
-const profileUploadDir = path_1.default.resolve(process.cwd(), "src/resources/static/assets/uploads/profiles");
-fs_1.default.mkdirSync(profileUploadDir, { recursive: true });
-const createImageUploader = (destination) => (0, multer_1.default)({
-    storage: multer_1.default.diskStorage({
-        destination: (_req, _file, cb) => cb(null, destination),
-        filename: (_req, file, cb) => {
-            const extension = path_1.default.extname(file.originalname).toLowerCase();
-            cb(null, `${(0, uuid_1.v4)()}${extension}`);
-        },
-    }),
+const createImageUploader = () => (0, multer_1.default)({
+    storage: multer_1.default.memoryStorage(),
     fileFilter: (_req, file, cb) => {
         if (!["image/jpeg", "image/png", "image/webp"].includes(file.mimetype)) {
             return cb(new Error("Upload a JPG, PNG, or WebP image"));
@@ -94,5 +81,5 @@ const createImageUploader = (destination) => (0, multer_1.default)({
     },
     limits: { fileSize: 5 * 1024 * 1024 },
 });
-exports.uploadOrganizationImage = createImageUploader(organizationUploadDir);
-exports.uploadProfilePicture = createImageUploader(profileUploadDir);
+exports.uploadOrganizationImage = createImageUploader();
+exports.uploadProfilePicture = createImageUploader();

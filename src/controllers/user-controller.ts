@@ -27,7 +27,7 @@ import {
 } from "../services";
 import { KYCStatus, Role } from "@prisma/client";
 import moment from "moment";
-import { absoluteAssetUrl } from "../helpers";
+import { uploadImageBuffer } from "../utils";
 import { updateUserProfilePictureService } from "../services/user-service";
 import { assertOfficeInOrganization, assertUserInOrganization } from "../helpers/organization-access";
 
@@ -137,7 +137,8 @@ export const currentUserController = async (req: Request, res: Response): Promis
 export const updateUserProfilePictureController = async (req: Request, res: Response): Promise<void> => {
     if (!req.currentUser) throw new BadRequestError("User not authorized");
     if (!req.file) throw new BadRequestError("Choose a profile picture to upload");
-    const profilePictureUrl = absoluteAssetUrl(req, `/profiles/${req.file.filename}`);
+    const uploaded = await uploadImageBuffer(req.file.buffer, "profiles");
+    const profilePictureUrl = uploaded.secure_url;
     const user = await updateUserProfilePictureService(req.currentUser.id, profilePictureUrl);
     successResponse(res, StatusCodes.OK, {
       message: "Profile picture updated",

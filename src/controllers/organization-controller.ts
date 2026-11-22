@@ -2,7 +2,8 @@ import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { GenderEnum } from "@prisma/client";
 import { BadRequestError } from "../errors";
-import { absoluteAssetUrl, generateJWT, successResponse } from "../helpers";
+import { generateJWT, successResponse } from "../helpers";
+import { uploadImageBuffer } from "../utils";
 import {
   createOrganizationAccount,
   getOrganizationById,
@@ -45,18 +46,18 @@ export const uploadOrganizationImageController = async (req: Request, res: Respo
   if (req.body.imageType && req.body.imageType !== "banner") {
     throw new BadRequestError("Only organization banners can be uploaded");
   }
-  const url = absoluteAssetUrl(req, `/organizations/${req.file.filename}`);
+  const uploaded = await uploadImageBuffer(req.file.buffer, "organizations");
   if (!req.currentUser.organizationId) throw new BadRequestError("User is not assigned to an organization");
-  const organization = await updateOrganizationImage(req.currentUser.organizationId, url);
+  const organization = await updateOrganizationImage(req.currentUser.organizationId, uploaded.secure_url);
   successResponse(res, StatusCodes.OK, { message: "Organization banner uploaded", organization });
 };
 
 export const updateOrganizationBannerController = async (req: Request, res: Response) => {
   if (!req.currentUser) throw new BadRequestError("User not authorized");
   if (!req.file) throw new BadRequestError("Choose a banner image to upload");
-  const url = absoluteAssetUrl(req, `/organizations/${req.file.filename}`);
+  const uploaded = await uploadImageBuffer(req.file.buffer, "organizations");
   if (!req.currentUser.organizationId) throw new BadRequestError("User is not assigned to an organization");
-  const organization = await updateOrganizationImage(req.currentUser.organizationId, url);
+  const organization = await updateOrganizationImage(req.currentUser.organizationId, uploaded.secure_url);
   successResponse(res, StatusCodes.OK, { message: "Organization banner updated", organization });
 };
 

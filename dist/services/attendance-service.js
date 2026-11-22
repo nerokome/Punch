@@ -443,6 +443,20 @@ const resolveWorkModeForDate = (schedules, date) => {
     matches.sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime());
     return matches[0].workMode;
 };
+const getWorkedDurationMs = (record, at = new Date()) => {
+    const end = record.clockOut ?? at;
+    const outsideMs = (record.outsideDurationMs ?? 0) +
+        (record.outsideSince ? Math.max(0, end.getTime() - record.outsideSince.getTime()) : 0);
+    return Math.max(0, end.getTime() - record.clockIn.getTime() - outsideMs);
+};
+const withWorkedDuration = (record) => {
+    const workedDurationMs = getWorkedDurationMs(record);
+    return {
+        ...record,
+        workedDurationMs,
+        workedHours: workedDurationMs / 3600000,
+    };
+};
 const isUserOnLeave = (leaves, date) => {
     return leaves.some((leave) => {
         const start = new Date(leave.startDate);
@@ -483,6 +497,8 @@ const buildDaysBreakdown = (dateRange, schedules, attendanceRecords, approvedLea
                     : resolveDayStatus(workMode, record),
             clockIn: record?.clockIn ?? null,
             clockOut: record?.clockOut ?? null,
+            workedDurationMs: record ? getWorkedDurationMs(record) : 0,
+            workedHours: record ? getWorkedDurationMs(record) / 3600000 : 0,
             method: record?.method ?? null,
         };
     });
@@ -742,7 +758,7 @@ const getAllAttendanceRecordsService = async (filters = {}) => {
             total,
             pages,
             currentPage: page,
-            data,
+            data: data.map(withWorkedDuration),
         };
     }
     catch (error) {
@@ -816,7 +832,7 @@ const getUserAllAttendanceRecordsService = async (userId, filters = {}) => {
             total,
             pages,
             currentPage: page,
-            data,
+            data: data.map(withWorkedDuration),
         };
     }
     catch (error) {
@@ -911,6 +927,8 @@ const getUsersWithAttendance = async (filters = {}) => {
                             method: true,
                             clockIn: true,
                             clockOut: true,
+                            outsideSince: true,
+                            outsideDurationMs: true,
                             status: true,
                             createdAt: true,
                         },
@@ -930,9 +948,10 @@ const getUsersWithAttendance = async (filters = {}) => {
         ]);
         const computed = users.map(({ workSchedules, attendance, leaveRequests, ...user }) => {
             const days = buildDaysBreakdown(dateRange, workSchedules, attendance, leaveRequests);
+            const attendanceWithDuration = attendance.map(withWorkedDuration);
             return {
                 ...user,
-                attendance,
+                attendance: attendanceWithDuration,
                 leaveRequests,
                 status: days.length === 1 ? days[0].status : undefined,
                 days,
@@ -1034,6 +1053,8 @@ const getOfficeUsersWithAttendance = async (officeIds, { startDate, endDate, pag
                         method: true,
                         clockIn: true,
                         clockOut: true,
+                        outsideSince: true,
+                        outsideDurationMs: true,
                         status: true,
                     },
                 },
@@ -1041,9 +1062,10 @@ const getOfficeUsersWithAttendance = async (officeIds, { startDate, endDate, pag
         });
         const computed = users.map(({ workSchedules, attendance, leaveRequests, ...user }) => {
             const days = buildDaysBreakdown(dateRange, workSchedules, attendance, leaveRequests);
+            const attendanceWithDuration = attendance.map(withWorkedDuration);
             return {
                 ...user,
-                attendance,
+                attendance: attendanceWithDuration,
                 status: days.length === 1 ? days[0].status : undefined,
                 days,
             };

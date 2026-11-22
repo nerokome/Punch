@@ -17,3 +17,4 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./file-upload-util"), exports);
 __exportStar(require("./delete-upload-util"), exports);
 __exportStar(require("./sendEmail-util"), exports);
+__exportStar(require("./cloudinary"), exports);

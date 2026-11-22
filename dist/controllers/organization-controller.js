@@ -4,6 +4,7 @@ exports.platformOrganizationSummaryController = exports.currentOrganizationContr
 const http_status_codes_1 = require("http-status-codes");
 const errors_1 = require("../errors");
 const helpers_1 = require("../helpers");
+const utils_1 = require("../utils");
 const organization_service_1 = require("../services/organization-service");
 const signupOrganizationController = async (req, res) => {
     const result = await (0, organization_service_1.createOrganizationAccount)({
@@ -42,10 +43,10 @@ const uploadOrganizationImageController = async (req, res) => {
     if (req.body.imageType && req.body.imageType !== "banner") {
         throw new errors_1.BadRequestError("Only organization banners can be uploaded");
     }
-    const url = (0, helpers_1.absoluteAssetUrl)(req, `/organizations/${req.file.filename}`);
+    const uploaded = await (0, utils_1.uploadImageBuffer)(req.file.buffer, "organizations");
     if (!req.currentUser.organizationId)
         throw new errors_1.BadRequestError("User is not assigned to an organization");
-    const organization = await (0, organization_service_1.updateOrganizationImage)(req.currentUser.organizationId, url);
+    const organization = await (0, organization_service_1.updateOrganizationImage)(req.currentUser.organizationId, uploaded.secure_url);
     (0, helpers_1.successResponse)(res, http_status_codes_1.StatusCodes.OK, { message: "Organization banner uploaded", organization });
 };
 exports.uploadOrganizationImageController = uploadOrganizationImageController;
@@ -54,10 +55,10 @@ const updateOrganizationBannerController = async (req, res) => {
         throw new errors_1.BadRequestError("User not authorized");
     if (!req.file)
         throw new errors_1.BadRequestError("Choose a banner image to upload");
-    const url = (0, helpers_1.absoluteAssetUrl)(req, `/organizations/${req.file.filename}`);
+    const uploaded = await (0, utils_1.uploadImageBuffer)(req.file.buffer, "organizations");
     if (!req.currentUser.organizationId)
         throw new errors_1.BadRequestError("User is not assigned to an organization");
-    const organization = await (0, organization_service_1.updateOrganizationImage)(req.currentUser.organizationId, url);
+    const organization = await (0, organization_service_1.updateOrganizationImage)(req.currentUser.organizationId, uploaded.secure_url);
     (0, helpers_1.successResponse)(res, http_status_codes_1.StatusCodes.OK, { message: "Organization banner updated", organization });
 };
 exports.updateOrganizationBannerController = updateOrganizationBannerController;
