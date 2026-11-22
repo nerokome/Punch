@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getOrganizationById = exports.updateOrganizationImage = exports.createOrganizationAccount = void 0;
+exports.getPlatformOrganizationSummary = exports.getOrganizationById = exports.updateOrganizationImage = exports.createOrganizationAccount = void 0;
 const client_1 = require("@prisma/client");
 const client_2 = require("../client");
 const errors_1 = require("../errors");
@@ -44,3 +44,29 @@ const updateOrganizationImage = async (organizationId, url) => {
 exports.updateOrganizationImage = updateOrganizationImage;
 const getOrganizationById = (organizationId) => client_2.prisma.organization.findUnique({ where: { id: organizationId } });
 exports.getOrganizationById = getOrganizationById;
+const getPlatformOrganizationSummary = async () => {
+    const organizations = await client_2.prisma.organization.findMany({
+        orderBy: { name: "asc" },
+        select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+            createdAt: true,
+            _count: {
+                select: {
+                    users: { where: { role: client_1.Role.AGENT, isDeleted: false } },
+                },
+            },
+        },
+    });
+    const organizationList = organizations.map(({ _count, ...organization }) => ({
+        ...organization,
+        agentCount: _count.users,
+    }));
+    return {
+        totalOrganizations: organizationList.length,
+        totalAgents: organizationList.reduce((total, organization) => total + organization.agentCount, 0),
+        organizations: organizationList,
+    };
+};
+exports.getPlatformOrganizationSummary = getPlatformOrganizationSummary;

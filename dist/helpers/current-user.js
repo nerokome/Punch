@@ -1,6 +1,8 @@
+"use strict";
 // import { NextFunction, Request, Response } from "express";
 // import jwt from "jsonwebtoken";
 // import { UserPayload } from "../typings/express";
+Object.defineProperty(exports, "__esModule", { value: true });
 // export const currentUserMiddleware = (
 //   req: Request,
 //   res: Response,

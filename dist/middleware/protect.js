@@ -1,8 +1,10 @@
+"use strict";
 // import jwt from 'jsonwebtoken';
 // import { Request, Response, NextFunction } from "express";
 // import { StatusCodes } from 'http-status-codes';
 // const asyncHandler = require('express-async-handler')
 // const User = require('../models/User')
+Object.defineProperty(exports, "__esModule", { value: true });
 // // Protect Routes
 // export const protect = asyncHandler(async (
 //     err: Error,

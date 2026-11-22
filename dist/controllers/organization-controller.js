@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.currentOrganizationController = exports.updateOrganizationBannerController = exports.uploadOrganizationImageController = exports.signupOrganizationController = void 0;
+exports.platformOrganizationSummaryController = exports.currentOrganizationController = exports.updateOrganizationBannerController = exports.uploadOrganizationImageController = exports.signupOrganizationController = void 0;
 const http_status_codes_1 = require("http-status-codes");
 const errors_1 = require("../errors");
 const helpers_1 = require("../helpers");
@@ -72,3 +72,11 @@ const currentOrganizationController = async (req, res) => {
     (0, helpers_1.successResponse)(res, http_status_codes_1.StatusCodes.OK, { organization });
 };
 exports.currentOrganizationController = currentOrganizationController;
+const platformOrganizationSummaryController = async (_req, res) => {
+    const summary = await (0, organization_service_1.getPlatformOrganizationSummary)();
+    (0, helpers_1.successResponse)(res, http_status_codes_1.StatusCodes.OK, {
+        message: "Platform organization summary retrieved successfully",
+        data: summary,
+    });
+};
+exports.platformOrganizationSummaryController = platformOrganizationSummaryController;
