@@ -14,27 +14,26 @@ const socket_io_1 = require("socket.io");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const node_cron_1 = __importDefault(require("node-cron"));
 const attendance_service_1 = require("./services/attendance-service");
-const PORT = process.env.PORT || 3000;
 // start the express app
 const start = async () => {
     try {
         logger_1.default.info("connected to the database");
-        const PORT = process.env.PORT || 5000;
-        let httpServer;
-        let newPORT;
-        if (process.env.NODE_ENV === "production") {
-            const options = {
-                cert: fs_1.default.readFileSync(path_1.default.resolve(__dirname, "outcess-ssl", "2025-ssl.pem"), "utf8"),
-                key: fs_1.default.readFileSync(path_1.default.resolve(__dirname, "outcess-ssl", "2025-ssl.key"), "utf8"),
+        // Render and other hosted platforms terminate HTTPS at their load balancer,
+        // so the app should serve plain HTTP there. Enable in-process HTTPS only
+        // when certificate paths are explicitly configured.
+        const certPath = process.env.SSL_CERT_PATH;
+        const keyPath = process.env.SSL_KEY_PATH;
+        if (Boolean(certPath) !== Boolean(keyPath)) {
+            throw new Error("Set both SSL_CERT_PATH and SSL_KEY_PATH to enable HTTPS");
+        }
+        const httpServer = certPath && keyPath
+            ? https_1.default.createServer({
+                cert: fs_1.default.readFileSync(path_1.default.resolve(certPath), "utf8"),
+                key: fs_1.default.readFileSync(path_1.default.resolve(keyPath), "utf8"),
                 passphrase: process.env.PASS_PHRASE,
-            };
-            httpServer = https_1.default.createServer(options, app_1.default);
-            newPORT = 7000;
-        }
-        else {
-            httpServer = http_1.default.createServer(app_1.default);
-            newPORT = PORT;
-        }
+            }, app_1.default)
+            : http_1.default.createServer(app_1.default);
+        const port = Number(process.env.PORT) || 5000;
         // Set up Socket.IO
         const io = new socket_io_1.Server(httpServer, {
             cors: {
@@ -157,8 +156,8 @@ const start = async () => {
             });
         };
         startAutoCheckoutJob();
-        httpServer.listen(newPORT, () => {
-            logger_1.default.info(`Server started on port ${newPORT} 🔥🔥🔥`);
+        httpServer.listen(port, () => {
+            logger_1.default.info(`Server started on port ${port} 🔥🔥🔥`);
         });
     }
     catch (err) {

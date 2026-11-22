@@ -10,38 +10,28 @@ import { Server as SocketIOServer } from "socket.io";
 import jwt from "jsonwebtoken";
 import cron from "node-cron";
 import { autoCheckoutOpenAttendances, pauseAttendanceForLostLocation, processAttendanceLocation } from "./services/attendance-service";
-const PORT = process.env.PORT || 3000;
-
 // start the express app
 const start = async () => {
   try {
     Logger.info("connected to the database");
 
-    const PORT = process.env.PORT || 5000;
-
-    let httpServer: any;
-    let newPORT: any;
-
-    if (process.env.NODE_ENV === "production") {
-
-    const options = {
-      cert: fs.readFileSync(
-        path.resolve(__dirname, "outcess-ssl", "2025-ssl.pem"),
-        "utf8",
-      ),
-      key: fs.readFileSync(
-        path.resolve(__dirname, "outcess-ssl", "2025-ssl.key"),
-        "utf8",
-      ),
-      passphrase: process.env.PASS_PHRASE,
-    };
-
-    httpServer = https.createServer(options, app);
-      newPORT = 7000;
-    } else {
-      httpServer = http.createServer(app);
-      newPORT = PORT;
+    // Render and other hosted platforms terminate HTTPS at their load balancer,
+    // so the app should serve plain HTTP there. Enable in-process HTTPS only
+    // when certificate paths are explicitly configured.
+    const certPath = process.env.SSL_CERT_PATH;
+    const keyPath = process.env.SSL_KEY_PATH;
+    if (Boolean(certPath) !== Boolean(keyPath)) {
+      throw new Error("Set both SSL_CERT_PATH and SSL_KEY_PATH to enable HTTPS");
     }
+
+    const httpServer = certPath && keyPath
+      ? https.createServer({
+          cert: fs.readFileSync(path.resolve(certPath), "utf8"),
+          key: fs.readFileSync(path.resolve(keyPath), "utf8"),
+          passphrase: process.env.PASS_PHRASE,
+        }, app)
+      : http.createServer(app);
+    const port = Number(process.env.PORT) || 5000;
 
     // Set up Socket.IO
     const io = new SocketIOServer(httpServer, {
@@ -167,8 +157,8 @@ const start = async () => {
 
     startAutoCheckoutJob();
 
-    httpServer.listen(newPORT, () => {
-      Logger.info(`Server started on port ${newPORT} 🔥🔥🔥`);
+    httpServer.listen(port, () => {
+      Logger.info(`Server started on port ${port} 🔥🔥🔥`);
     });
   } catch (err) {
     Logger.error(err);
