@@ -677,6 +677,20 @@ const getWorkedDurationMs = (record: {
   return Math.max(0, end.getTime() - record.clockIn.getTime() - outsideMs);
 };
 
+const withWorkedDuration = <T extends {
+  clockIn: Date;
+  clockOut: Date | null;
+  outsideSince?: Date | null;
+  outsideDurationMs?: number;
+}>(record: T) => {
+  const workedDurationMs = getWorkedDurationMs(record);
+  return {
+    ...record,
+    workedDurationMs,
+    workedHours: workedDurationMs / 3_600_000,
+  };
+};
+
 type LeaveLite = {
   startDate: Date;
   endDate: Date;
@@ -753,6 +767,7 @@ const buildDaysBreakdown = (
       clockIn: record?.clockIn ?? null,
       clockOut: record?.clockOut ?? null,
       workedDurationMs: record ? getWorkedDurationMs(record) : 0,
+      workedHours: record ? getWorkedDurationMs(record) / 3_600_000 : 0,
       method: record?.method ?? null,
     };
   });
@@ -1094,10 +1109,7 @@ export const getAllAttendanceRecordsService = async (
       total,
       pages,
       currentPage: page,
-      data: data.map((record) => ({
-        ...record,
-        workedDurationMs: getWorkedDurationMs(record),
-      })),
+      data: data.map(withWorkedDuration),
     };
   } catch (error) {
     throw new BadRequestError("Failed to get records");
@@ -1191,10 +1203,7 @@ export const getUserAllAttendanceRecordsService = async (
       total,
       pages,
       currentPage: page,
-      data: data.map((record) => ({
-        ...record,
-        workedDurationMs: getWorkedDurationMs(record),
-      })),
+      data: data.map(withWorkedDuration),
     };
   } catch (error) {
     throw new BadRequestError("Failed to get user records");
@@ -1347,10 +1356,7 @@ export const getUsersWithAttendance = async (
           leaveRequests as LeaveLite[],
         );
 
-        const attendanceWithDuration = attendance.map((record) => ({
-          ...record,
-          workedDurationMs: getWorkedDurationMs(record),
-        }));
+        const attendanceWithDuration = attendance.map(withWorkedDuration);
 
         return {
           ...user,
@@ -1484,10 +1490,7 @@ export const getOfficeUsersWithAttendance = async (
         leaveRequests,
       );
 
-      const attendanceWithDuration = attendance.map((record) => ({
-        ...record,
-        workedDurationMs: getWorkedDurationMs(record),
-      }));
+      const attendanceWithDuration = attendance.map(withWorkedDuration);
 
       return {
         ...user,
