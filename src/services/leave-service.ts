@@ -14,6 +14,7 @@ type LeaveFilters = {
   search?: string;
   officeId?: string;
   officeIds?: string[];
+  organizationId?: string | null;
 };
 
 export const createLeaveRequestService = async (
@@ -133,6 +134,7 @@ export const getAllLeaveRequestsService = async (
     search = "",
     officeId,
     officeIds,
+    organizationId,
   } = filters;
 
   const skip = (page - 1) * limit;
@@ -147,19 +149,14 @@ export const getAllLeaveRequestsService = async (
     where.leaveType = leaveType;
   }
 
-  where.employee = {};
-
-  if (officeIds && officeIds.length > 0) {
-    where.employee = {
-      officeId: {
-        in: officeIds,
-      },
-    };
+  const employeeWhere: Prisma.UserWhereInput = {};
+  if (organizationId) employeeWhere.organizationId = organizationId;
+  if (officeIds !== undefined) {
+    employeeWhere.officeId = { in: officeIds };
   } else if (officeId) {
-    where.employee = {
-      officeId,
-    };
+    employeeWhere.officeId = officeId;
   }
+  where.employee = employeeWhere;
 
   if (search) {
     const employeeSearch: Prisma.UserWhereInput[] = [

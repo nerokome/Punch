@@ -16,7 +16,7 @@ prismaClient.$use(async (params: any, next: any) => {
     (params.model == "User") &&
     (params.action == "create" || params.action == "update")
   ) {
-    Logger.info({ data: params.args.data });
+    // Never log credentials or other user data during password writes.
     if (params.args.data.password) {
       const hashedPassword = await Password.toHash(params.args.data.password);
 

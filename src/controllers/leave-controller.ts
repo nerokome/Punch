@@ -4,6 +4,7 @@ import { LeaveStatus, LeaveType, Role } from "@prisma/client";
 
 import { successResponse } from "../helpers";
 import { BadRequestError, ForbiddenError } from "../errors";
+import { assertOfficeInOrganization, assertUserInOrganization, getOrganizationOfficeIds } from "../helpers/organization-access";
 
 import {
   createLeaveRequestService,
@@ -59,8 +60,10 @@ export const getLeaveRequestController = async (
   res: Response,
 ): Promise<void> => {
   const { leaveId } = req.params;
+  if (!req.currentUser) throw new BadRequestError("User not authorized");
 
   const data = await getLeaveRequestByIdService(leaveId);
+  await assertUserInOrganization(data.employee.id, req.currentUser.organizationId);
 
   successResponse(res, StatusCodes.OK, {
     message: "Leave request retrieved successfully",
@@ -87,6 +90,14 @@ export const getLeaveRequestsController = async (
     }
   }
 
+  if (req.currentUser.role === Role.SUPER_ADMIN && req.currentUser.organizationId) {
+    officeScope = await getOrganizationOfficeIds(req.currentUser.organizationId);
+    if (req.query.officeId && typeof req.query.officeId === "string") {
+      await assertOfficeInOrganization(req.query.officeId, req.currentUser.organizationId);
+      officeScope = [req.query.officeId];
+    }
+  }
+
   if (
     req.currentUser.role === Role.SUPER_ADMIN &&
     req.query.officeId &&
@@ -105,6 +116,7 @@ export const getLeaveRequestsController = async (
     search: search as string,
     officeId: officeFilter,
     officeIds: officeScope,
+    organizationId: req.currentUser.organizationId,
   });
 
   successResponse(res, StatusCodes.OK, {
@@ -129,6 +141,8 @@ export const approveLeaveRequestController = async (
   }
 
   const { leaveId } = req.params;
+  const leave = await getLeaveRequestByIdService(leaveId);
+  await assertUserInOrganization(leave.employee.id, req.currentUser.organizationId);
 
   const data = await approveLeaveRequestService(
     leaveId,
@@ -157,6 +171,8 @@ export const rejectLeaveRequestController = async (
   }
 
   const { leaveId } = req.params;
+  const leave = await getLeaveRequestByIdService(leaveId);
+  await assertUserInOrganization(leave.employee.id, req.currentUser.organizationId);
   const { rejectionReason } = req.body;
 
   if (!rejectionReason) {

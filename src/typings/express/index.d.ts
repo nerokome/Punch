@@ -6,6 +6,7 @@ export interface UserPayload {
   name: string;
   phone: string;
   officeId?: string | null;
+  organizationId?: string | null;
   officeIds?: string[];
   role: Role;
   isActive: KYCStatus;

@@ -7,8 +7,9 @@ import path from "path";
 import fs from "fs";
 import { prisma } from "./client";
 import { Server as SocketIOServer } from "socket.io";
+import jwt from "jsonwebtoken";
 import cron from "node-cron";
-import { autoCheckoutOpenAttendances } from "./services/attendance-service";
+import { autoCheckoutOpenAttendances, pauseAttendanceForLostLocation, processAttendanceLocation } from "./services/attendance-service";
 const PORT = process.env.PORT || 3000;
 
 // start the express app
@@ -49,17 +50,102 @@ const start = async () => {
       },
     });
 
+    // Authenticate sockets and derive office rooms from database assignments;
+    // clients cannot subscribe themselves to another office's notifications.
+    io.use(async (socket, next) => {
+      try {
+        const token = socket.handshake.auth?.token;
+        if (typeof token !== "string" || !process.env.JWT_SECRET) {
+          return next(new Error("Unauthorized"));
+        }
+        const payload = jwt.verify(token, process.env.JWT_SECRET) as { id?: string };
+        if (!payload.id) return next(new Error("Unauthorized"));
+        const user = await prisma.user.findUnique({
+          where: { id: payload.id },
+          select: { id: true, role: true, isActive: true, officeId: true, organizationId: true },
+        });
+        if (!user || user.isActive !== "active") return next(new Error("Unauthorized"));
+
+        let officeIds: string[] = [];
+        if (user.role === "SUPER_ADMIN" && !user.organizationId) {
+          officeIds = (await prisma.officeLocation.findMany({ select: { id: true } })).map((office) => office.id);
+        } else if (user.role === "ADMIN" && user.organizationId) {
+          officeIds = (await prisma.officeLocation.findMany({
+            where: { organizationId: user.organizationId }, select: { id: true },
+          })).map((office) => office.id);
+        } else if (user.role === "ADMIN") {
+          const accesses = await prisma.adminOfficeAccess.findMany({
+            where: { adminId: user.id }, select: { officeId: true },
+          });
+          officeIds = [...new Set([user.officeId, ...accesses.map((row) => row.officeId)].filter((id): id is string => Boolean(id)))];
+        } else if (user.officeId) {
+          officeIds = [user.officeId];
+        }
+        socket.data.user = { id: user.id, role: user.role, officeIds };
+        next();
+      } catch {
+        next(new Error("Unauthorized"));
+      }
+    });
+
     // Socket.IO connection
     io.on("connection", (socket) => {
       Logger.info(`New client connected: ${socket.id}`);
 
+      const currentUser = socket.data.user as { id: string; role: string; officeIds: string[] };
+      currentUser.officeIds.forEach((officeId) => {
+        socket.join(`office:${officeId}`);
+        socket.join(officeId); // Keep existing attendance event subscribers compatible.
+      });
+      let locationTimeout: NodeJS.Timeout | undefined;
+      const armLocationTimeout = () => {
+        if (locationTimeout) clearTimeout(locationTimeout);
+        locationTimeout = setTimeout(() => {
+          if (currentUser.role === "AGENT") {
+            void pauseAttendanceForLostLocation(currentUser.id).catch((error) => {
+              Logger.error("Could not pause attendance after stale location", error);
+            });
+          }
+        }, 30000);
+      };
+      if (currentUser.role === "AGENT") armLocationTimeout();
+
       socket.on("join-office", (officeId: string) => {
-        socket.join(officeId);
-        Logger.info(`Client ${socket.id} joined office ${officeId}`);
+        if (typeof officeId === "string" && currentUser.officeIds.includes(officeId)) {
+          socket.join(`office:${officeId}`);
+          socket.join(officeId);
+        }
+      });
+
+      // Agent clients should send a GPS sample every 10–15 seconds while an
+      // attendance session is open (and immediately on geolocation changes).
+      let lastLocationAt = 0;
+      socket.on("attendance:location", async (location: { latitude?: unknown; longitude?: unknown }) => {
+        if (currentUser.role !== "AGENT") return;
+        const now = Date.now();
+        if (now - lastLocationAt < 5000) return;
+        lastLocationAt = now;
+        armLocationTimeout();
+        try {
+          const result = await processAttendanceLocation(
+            currentUser.id,
+            Number(location?.latitude),
+            Number(location?.longitude),
+          );
+          socket.emit("attendance:location-result", result);
+        } catch (error) {
+          socket.emit("attendance:tracking-error", { message: "Could not update attendance location" });
+        }
       });
 
       socket.on("disconnect", () => {
         Logger.info(`Client disconnected: ${socket.id}`);
+        if (locationTimeout) clearTimeout(locationTimeout);
+        if (currentUser.role === "AGENT") {
+          void pauseAttendanceForLostLocation(currentUser.id).catch((error) => {
+            Logger.error("Could not pause attendance after location disconnect", error);
+          });
+        }
       });
     });
 

@@ -148,6 +148,7 @@ export const autoCheckoutOpenAttendances = async (
       where: { id: record.id },
       data: {
         clockOut: autoCheckoutTime,
+        ...finishOutsideInterval(record, autoCheckoutTime),
       },
     });
 
@@ -332,6 +333,130 @@ export const isWithinGeofence = (
 
   return distance <= radiusMeters;
 };
+
+/** Process an authenticated agent GPS sample for an open attendance session. */
+export const processAttendanceLocation = async (
+  userId: string,
+  userLat: number,
+  userLng: number,
+) => {
+  validateCoordinates(userLat, userLng);
+  const record = await prisma.attendanceRecord.findFirst({
+    where: { userId, clockOut: null },
+    orderBy: { clockIn: "desc" },
+    include: { office: true, user: { select: { name: true } } },
+  });
+  if (!record) return { tracking: false, reason: "No open attendance session" };
+  const { office } = record;
+  if (office.latitude == null || office.longitude == null) {
+    return { tracking: false, reason: "Office location is not configured" };
+  }
+
+  const now = new Date();
+  const inside = isWithinGeofence(
+    office.latitude,
+    office.longitude,
+    userLat,
+    userLng,
+    office.radius ?? DEFAULT_GEOFENCE_RADIUS_METERS,
+  );
+  const io = (global as any).io;
+  const workedDurationMs = (outsideSince: Date | null, outsideDurationMs: number) =>
+    Math.max(0, now.getTime() - record.clockIn.getTime() - outsideDurationMs -
+      (outsideSince ? now.getTime() - outsideSince.getTime() : 0));
+
+  if (!inside && !record.outsideSince) {
+    const changed = await prisma.attendanceRecord.updateMany({
+      where: { id: record.id, outsideSince: null, clockOut: null },
+      data: { outsideSince: now },
+    });
+    if (changed.count) {
+      io?.to(`office:${record.officeId}`).emit("agent-left-office-radius", {
+        attendanceId: record.id,
+        userId,
+        userName: record.user.name,
+        officeId: record.officeId,
+        at: now,
+        message: `${record.user.name} left the office radius. Attendance time is paused.`,
+      });
+    }
+    return {
+      tracking: true,
+      inside,
+      outsideSince: now,
+      outsideDurationMs: record.outsideDurationMs,
+      workedDurationMs: workedDurationMs(now, record.outsideDurationMs),
+    };
+  }
+
+  if (inside && record.outsideSince) {
+    const intervalMs = Math.max(0, now.getTime() - record.outsideSince.getTime());
+    const changed = await prisma.attendanceRecord.updateMany({
+      where: { id: record.id, outsideSince: record.outsideSince, clockOut: null },
+      data: {
+        outsideSince: null,
+        outsideDurationMs: { increment: intervalMs },
+      },
+    });
+    if (changed.count) {
+      io?.to(`office:${record.officeId}`).emit("agent-returned-to-office-radius", {
+        attendanceId: record.id,
+        userId,
+        userName: record.user.name,
+        officeId: record.officeId,
+        at: now,
+        outsideDurationMs: record.outsideDurationMs + intervalMs,
+        message: `${record.user.name} returned inside the office radius.`,
+      });
+    }
+    return {
+      tracking: true,
+      inside,
+      outsideDurationMs: record.outsideDurationMs + intervalMs,
+      workedDurationMs: workedDurationMs(null, record.outsideDurationMs + intervalMs),
+    };
+  }
+
+  return {
+    tracking: true,
+    inside,
+    outsideSince: record.outsideSince,
+    outsideDurationMs: record.outsideDurationMs,
+    workedDurationMs: workedDurationMs(record.outsideSince, record.outsideDurationMs),
+  };
+};
+
+/** Pause a session when the agent socket drops; missing GPS must not accrue time. */
+export const pauseAttendanceForLostLocation = async (userId: string) => {
+  const record = await prisma.attendanceRecord.findFirst({
+    where: { userId, clockOut: null, outsideSince: null },
+    orderBy: { clockIn: "desc" },
+    include: { user: { select: { name: true } } },
+  });
+  if (!record) return;
+  const now = new Date();
+  const changed = await prisma.attendanceRecord.updateMany({
+    where: { id: record.id, outsideSince: null, clockOut: null },
+    data: { outsideSince: now },
+  });
+  if (changed.count) {
+    (global as any).io?.to(`office:${record.officeId}`).emit("agent-location-lost", {
+      attendanceId: record.id,
+      userId,
+      userName: record.user.name,
+      officeId: record.officeId,
+      at: now,
+      message: `${record.user.name}'s live location was lost. Attendance time is paused until location resumes.`,
+    });
+  }
+};
+
+const finishOutsideInterval = (record: { outsideSince: Date | null; outsideDurationMs: number }, at: Date) => ({
+  outsideSince: null,
+  outsideDurationMs:
+    record.outsideDurationMs +
+    (record.outsideSince ? Math.max(0, at.getTime() - record.outsideSince.getTime()) : 0),
+});
 
 // Validates raw lat/lng values coming from the client before they're
 // ever used in a distance calculation. Rejects missing, non-numeric,
@@ -739,6 +864,7 @@ export const handleAttendanceService = async (
         qrTokenId: qrToken.id, // link QR token if needed
         clockOutLat: userLat,
         clockOutLng: userLng,
+        ...finishOutsideInterval(recordToUpdate, now),
       },
     });
 
@@ -831,6 +957,7 @@ export const manualAttendanceService = async (
       where: { id: recordToUpdate.id },
       data: {
         clockOut: now,
+        ...finishOutsideInterval(recordToUpdate, now),
       },
     });
 
@@ -1370,15 +1497,23 @@ export const getDashboardStatsService = async (
     const endDateTime = new Date(endDate);
     endDateTime.setHours(23, 59, 59, 999);
 
-   const userWhere: Prisma.UserWhereInput = {
-  role: { in: [Role.AGENT, Role.ADMIN,] },
-  isDeleted: false,
-  isActive: KYCStatus.active,
-};
+    // Dashboard employee totals include employees only. Admin and
+    // super-admin accounts must not be counted as staff in the attendance
+    // figures.
+    const userWhere: Prisma.UserWhereInput = {
+      role: Role.AGENT,
+      isDeleted: false,
+      isActive: KYCStatus.active,
+    };
 
     if (officeIds !== undefined) {
       userWhere.officeId = { in: officeIds };
     }
+
+    // Count the active employee roster independently from today's schedule.
+    // Otherwise employees without a schedule matching this date disappear
+    // from the dashboard's total employee count.
+    const totalEmployees = await prisma.user.count({ where: userWhere });
 
     const daysOfWeekInRange = new Set<DayOfWeek>();
 
@@ -1454,7 +1589,7 @@ export const getDashboardStatsService = async (
       presentUserIds.delete(userId);
     }
 
-    const totalEmployees = presentUserIds.size;
+    const expectedOnsiteToday = presentUserIds.size;
     const wfhToday = wfhUserIds.size;
     const onLeaveToday = onLeaveUserIds.size;
 
@@ -1525,7 +1660,7 @@ export const getDashboardStatsService = async (
 
     const absentToday = Math.max(
       0,
-      totalEmployees - presentToday,
+      expectedOnsiteToday - presentToday,
     );
 
     return {

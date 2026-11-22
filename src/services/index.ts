@@ -4,3 +4,4 @@ export * from "./office-location-service";
 export * from "./qr-token-service";
 export * from "./workSchedule-service";
 export * from "./leave-service";
+export * from "./organization-service";

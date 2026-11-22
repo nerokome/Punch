@@ -16,29 +16,32 @@ import { ForbiddenError } from "../errors";
 
 
 export const isSuperAdmin = (req: Request, _: Response, next: NextFunction) => {
-  // if (req.currentUser?.role !== Role.SUPER_ADMIN && req.currentUser?.isEnabled)
-  //   throw new ForbiddenError();
-  // next();
-  if ((req.currentUser?.role === Role.ADMIN || req.currentUser?.role === Role.SUPER_ADMIN) && req.currentUser?.isActive === KYCStatus.active) {
-    // throw new ForbiddenError();
-    next()
-  } else {
-    // next();
-    throw new ForbiddenError();
-  }
+  const user = req.currentUser;
+  const canManage = user?.role === Role.ADMIN ||
+    (user?.role === Role.SUPER_ADMIN && !user.organizationId);
+  if (canManage && user?.isActive === KYCStatus.active) return next();
+  throw new ForbiddenError();
+};
+
+export const isPlatformSuperAdmin = (req: Request, _: Response, next: NextFunction) => {
+  const user = req.currentUser;
+  if (
+    user?.role === Role.SUPER_ADMIN &&
+    !user.organizationId &&
+    user.isActive === KYCStatus.active
+  ) return next();
+  throw new ForbiddenError();
 };
 
 export const isSuper = (req: Request, _: Response, next: NextFunction) => {
   // if (req.currentUser?.role !== Role.SUPER_ADMIN && req.currentUser?.isEnabled)
   //   throw new ForbiddenError();
   // next();
-  if ((req.currentUser?.role === Role.SUPER_ADMIN) && req.currentUser?.isActive === KYCStatus.active) {
-    // throw new ForbiddenError();
-    next()
-  } else {
-    // next();
-    throw new ForbiddenError();
-  }
+  const user = req.currentUser;
+  const canCreateOffice = user?.role === Role.ADMIN ||
+    (user?.role === Role.SUPER_ADMIN && !user.organizationId);
+  if (canCreateOffice && user?.isActive === KYCStatus.active) return next();
+  throw new ForbiddenError();
 };
 
 export const uploadCategory = {

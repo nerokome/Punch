@@ -7,6 +7,15 @@ export const loginSchema = () => {
     ];
 };
 
+export const organizationSignupSchema = () => [
+  body("organizationName").trim().isLength({ min: 2, max: 120 }).withMessage("Organization name must be 2 to 120 characters"),
+  body("name").trim().notEmpty().withMessage("Your name is required"),
+  body("email").trim().isEmail().withMessage("A valid email is required"),
+  body("phone").trim().notEmpty().withMessage("Phone number is required"),
+  body("password").isLength({ min: 6 }).withMessage("Password must be at least 6 characters"),
+  body("gender").isIn(["Male", "Female"]).withMessage("Choose a gender"),
+];
+
 export const registerUserSchema = () => {
     return [
       body("name").notEmpty().withMessage("Name is required"),

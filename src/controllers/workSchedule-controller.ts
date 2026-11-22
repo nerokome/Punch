@@ -5,6 +5,7 @@ import {
   successResponse,
 } from "../helpers";
 import { BadRequestError } from "../errors";
+import { assertUserInOrganization } from "../helpers/organization-access";
 
 import {
   createWorkScheduleService,
@@ -138,9 +139,12 @@ export const getUserWorkSchedulesController = async (
 ): Promise<void> => {
   try {
     const { userId } = req.params;
+    if (!req.currentUser) throw new BadRequestError("User not authorized");
+    await assertUserInOrganization(userId, req.currentUser.organizationId);
 
     const schedules = await getUserWorkSchedulesService(
       userId,
+      req.currentUser.organizationId,
     );
 
     successResponse(res, StatusCodes.OK, {
@@ -163,9 +167,11 @@ export const getWorkScheduleByIdController = async (
 ): Promise<void> => {
   try {
     const { scheduleId } = req.params;
+    if (!req.currentUser) throw new BadRequestError("User not authorized");
 
     const schedule = await getWorkScheduleByIdService(
       scheduleId,
+      req.currentUser.organizationId,
     );
 
     successResponse(res, StatusCodes.OK, {

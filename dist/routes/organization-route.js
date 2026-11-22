@@ -1,0 +1,16 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.organizationRoutes = void 0;
+const express_1 = require("express");
+const middleware_1 = require("../middleware");
+const helpers_1 = require("../helpers");
+const user_schema_1 = require("../schema/user/user-schema");
+const utils_1 = require("../utils");
+const organization_controller_1 = require("../controllers/organization-controller");
+const router = (0, express_1.Router)();
+exports.organizationRoutes = router;
+router.post("/signup", (0, user_schema_1.organizationSignupSchema)(), helpers_1.validateRequestMiddleware, organization_controller_1.signupOrganizationController);
+router.use(middleware_1.currentUserMiddleware, middleware_1.requireAuthMiddleware);
+router.get("/me", organization_controller_1.currentOrganizationController);
+router.post("/me/image", utils_1.uploadOrganizationImage.single("image"), organization_controller_1.uploadOrganizationImageController);
+router.put("/me/banner", utils_1.uploadOrganizationImage.single("image"), organization_controller_1.updateOrganizationBannerController);

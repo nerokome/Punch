@@ -9,6 +9,7 @@ interface GetAllUsersParams {
   searchTerm?: string;
   officeId?: string;
   officeIds?: string[];
+  organizationId?: string | null;
 }
 
 interface PaginatedUsers {
@@ -28,6 +29,7 @@ export type UserAccount = Pick<
   | "gender"
   | "officeId"
   | "isActive"
+  | "organizationId"
 >;
 
 // excluded password types
@@ -72,7 +74,7 @@ const syncAdminPrimaryOffice = async (adminId: string): Promise<void> => {
   const [admin, accesses] = await Promise.all([
     prisma.user.findUnique({
       where: { id: adminId },
-      select: { officeId: true },
+      select: { officeId: true, organizationId: true },
     }),
     prisma.adminOfficeAccess.findMany({
       where: { adminId },
@@ -101,6 +103,18 @@ const syncAdminPrimaryOffice = async (adminId: string): Promise<void> => {
 export const registerUserService = async (
   data: UserAccount,
 ): Promise<ReturnedUser> => {
+  if (data.role === Role.SUPER_ADMIN) {
+    throw new BadRequestError("The global super admin account can only be created by the seed workflow");
+  }
+  if (data.organizationId && data.officeId) {
+    const office = await prisma.officeLocation.findUnique({
+      where: { id: data.officeId },
+      select: { organizationId: true },
+    });
+    if (!office || office.organizationId !== data.organizationId) {
+      throw new BadRequestError("User and office must belong to the same organization");
+    }
+  }
   const user: ReturnedUser = await prisma.$transaction(async (tx) => {
     const createdUser = await tx.user.create({
       data: { ...data },
@@ -161,6 +175,22 @@ export const updateUserService = async (
   return user;
 };
 
+export const updateUserProfilePictureService = async (
+  userId: string,
+  profilePictureUrl: string,
+) => {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { profilePictureUrl },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      profilePictureUrl: true,
+    },
+  });
+};
+
 export const updatePasswordService = async (
   email: string,
   password: string,
@@ -189,7 +219,8 @@ export const verifyUserService = async (
 /**
  * Returns the list of officeIds a requester is scoped to.
  *
- * - SUPER_ADMIN  -> undefined  (no restriction; caller should skip filtering)
+ * - organization SUPER_ADMIN -> their organization's office IDs
+ * - legacy platform SUPER_ADMIN -> undefined (unrestricted)
  * - ADMIN        -> string[]   (their assigned offices via AdminOfficeAccess;
  *                                can be an empty array, meaning they currently
  *                                have no offices assigned and should see nothing)
@@ -203,9 +234,15 @@ export const verifyUserService = async (
 export const resolveOfficeScope = async (
   role: Role,
   userId: string,
+  organizationId?: string | null,
 ): Promise<string[] | undefined> => {
   if (role === Role.SUPER_ADMIN) {
-    return undefined; // no restriction
+    if (!organizationId) return undefined; // legacy platform super admin
+    const offices = await prisma.officeLocation.findMany({
+      where: { organizationId },
+      select: { id: true },
+    });
+    return offices.map((office) => office.id);
   }
 
   if (role === Role.ADMIN) {
@@ -221,7 +258,7 @@ export const getAdminOfficeIds = async (
   const [admin, accesses] = await Promise.all([
     prisma.user.findUnique({
       where: { id: adminId },
-      select: { officeId: true },
+      select: { officeId: true, organizationId: true },
     }),
     prisma.adminOfficeAccess.findMany({
       where: { adminId },
@@ -229,10 +266,18 @@ export const getAdminOfficeIds = async (
     }),
   ]);
 
-  const result = mergeAdminOfficeIds(
+  const merged = mergeAdminOfficeIds(
     admin?.officeId,
     accesses.map((access) => access.officeId),
   );
+  // Organization admins manage every office in their own tenant. Platform
+  // admins without an organization retain explicit office assignments only.
+  const result = admin?.organizationId
+    ? (await prisma.officeLocation.findMany({
+        where: { organizationId: admin.organizationId },
+        select: { id: true },
+      })).map((office) => office.id)
+    : merged;
 
   console.log(`[DEBUG] getAdminOfficeIds(${adminId}):`, {
     adminPrimaryOffice: admin?.officeId,
@@ -264,6 +309,7 @@ interface BulkUploadResult {
 export const bulkUploadUsersService = async (
   fileBuffer: Buffer,
   officeId: string,
+  organizationId?: string | null,
 ): Promise<BulkUploadResult> => {
   const workbook = XLSX.read(fileBuffer, { type: "buffer" });
   const sheetName = workbook.SheetNames[0];
@@ -271,7 +317,7 @@ export const bulkUploadUsersService = async (
   const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
 
   const result: BulkUploadResult = { created: 0, failed: [], skipped: [] };
-  const validRoles = ["ADMIN", "SUPER_ADMIN", "AGENT"];
+  const validRoles = ["ADMIN", "AGENT"];
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   for (let i = 0; i < rows.length; i++) {
@@ -350,6 +396,7 @@ export const bulkUploadUsersService = async (
         role: role as any,
         gender: (gender || undefined) as any,
         isActive: KYCStatus.active,
+        organizationId: organizationId ?? null,
       });
       result.created++;
     } catch (error: any) {
@@ -370,6 +417,7 @@ export const getAllUsersService = async ({
   searchTerm = "",
   officeId = "",
   officeIds = [],
+  organizationId,
 }: GetAllUsersParams): Promise<PaginatedUsers> => {
   const pageNumber = Number(page);
   const limitNumber = Number(limit);
@@ -377,6 +425,7 @@ export const getAllUsersService = async ({
 
   const whereCondition: any = {
     isDeleted: false,
+    ...(organizationId ? { organizationId } : {}),
     OR: [
       { name: { contains: searchTerm, mode: "insensitive" } },
       { email: { contains: searchTerm, mode: "insensitive" } },
@@ -422,7 +471,10 @@ export const getAllUsersService = async ({
       include: {
         office: true,
         shift: true,
-        adminOfficeAccess: { include: { office: true } },
+        adminOfficeAccess: {
+          ...(organizationId ? { where: { office: { organizationId } } } : {}),
+          include: { office: true },
+        },
       },
     }),
     prisma.user.count({
@@ -457,6 +509,9 @@ export const assignOfficeToAdminService = async (
     where: { id: officeId },
   });
   if (!office) throw new BadRequestError("Office not found");
+  if (admin.organizationId && office.organizationId !== admin.organizationId) {
+    throw new BadRequestError("Admin and office must belong to the same organization");
+  }
 
   // Create or ignore if already exists
   const access = await prisma.adminOfficeAccess.upsert({
@@ -480,6 +535,11 @@ export const removeOfficeFromAdminService = async (
   // Verify admin exists
   const admin = await prisma.user.findUnique({ where: { id: adminId } });
   if (!admin) throw new BadRequestError("Admin not found");
+  const office = await prisma.officeLocation.findUnique({ where: { id: officeId } });
+  if (!office) throw new BadRequestError("Office not found");
+  if (admin.organizationId && office.organizationId !== admin.organizationId) {
+    throw new BadRequestError("Admin and office must belong to the same organization");
+  }
 
   // Delete the access record
   await prisma.adminOfficeAccess.deleteMany({
@@ -498,7 +558,10 @@ export const getAdminOfficesService = async (adminId: string): Promise<any> => {
   if (!admin) throw new BadRequestError("Admin not found");
 
   const offices = await prisma.adminOfficeAccess.findMany({
-    where: { adminId },
+    where: {
+      adminId,
+      ...(admin.organizationId ? { office: { organizationId: admin.organizationId } } : {}),
+    },
     include: { office: true },
   });
 
@@ -506,6 +569,7 @@ export const getAdminOfficesService = async (adminId: string): Promise<any> => {
   if (
     admin.officeId &&
     admin.office &&
+    (!admin.organizationId || admin.office.organizationId === admin.organizationId) &&
     !offices.some((access) => access.officeId === admin.officeId)
   ) {
     offices.unshift({
@@ -522,6 +586,7 @@ export const getAdminOfficesService = async (adminId: string): Promise<any> => {
 
 export const getUserWithOfficesService = async (
   id: string,
+  organizationId?: string | null,
 ): Promise<any> => {
   const user = await prisma.user.findUnique({
     where: { id },
@@ -529,6 +594,7 @@ export const getUserWithOfficesService = async (
       office: true,
       shift: true,
       adminOfficeAccess: {
+        ...(organizationId ? { where: { office: { organizationId } } } : {}),
         include: { office: true },
       },
     },

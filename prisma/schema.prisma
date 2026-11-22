@@ -9,8 +9,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model OfficeLocation {
@@ -20,6 +21,8 @@ model OfficeLocation {
   latitude  Float?
   longitude Float?
   radius    Float  @default(100)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   users       User[]
   shifts      Shift[]
@@ -54,8 +57,10 @@ model User {
   // Required in practice for AGENTs (one office). For ADMIN/SUPER_ADMIN,
   // this can stay null — their offices live in AdminOfficeAccess instead.
   officeId String?
+  organizationId String?
   password String
   gender   GenderEnum
+  profilePictureUrl String?
 
   isActive           KYCStatus @default(active)
   isVerified         Boolean   @default(false)
@@ -67,6 +72,7 @@ model User {
 
   office OfficeLocation? @relation(fields: [officeId], references: [id])
   shift  Shift?          @relation(fields: [shiftId], references: [id])
+  organization Organization? @relation("OrganizationMembers", fields: [organizationId], references: [id], onDelete: Cascade)
 
   attendance    AttendanceRecord[]
   workSchedules WorkSchedule[]
@@ -77,12 +83,28 @@ model User {
   // Only populated when role is ADMIN or SUPER_ADMIN
   adminOfficeAccess AdminOfficeAccess[] @relation("AdminOffices")
 
+  ownedOrganization Organization? @relation("OrganizationOwner")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([officeId])
+  @@index([organizationId])
   @@index([shiftId])
   @@index([role])
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  logoUrl   String?
+  bannerUrl String?
+  ownerId   String   @unique
+  owner     User     @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  users     User[]   @relation("OrganizationMembers")
+  offices   OfficeLocation[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model AttendanceRecord {
@@ -105,6 +127,11 @@ model AttendanceRecord {
 
   clockOutLat Float?
   clockOutLng Float?
+
+  // Live geofence time accounting. Time outside the office is excluded from
+  // worked duration, including an interval that is still in progress.
+  outsideSince DateTime?
+  outsideDurationMs Int @default(0)
 
   user User @relation(fields: [userId], references: [id])
 

@@ -20,11 +20,18 @@ import {
   resetUserDeviceService,
   updateAttendanceStatusService,
 } from "../services";
+import { getOrganizationOfficeIds, assertUserInOrganization } from "../helpers/organization-access";
 
 const getAttendanceOfficeScope = async (req: Request): Promise<string[] | undefined> => {
   if (!req.currentUser) throw new BadRequestError("User not authorized");
 
-  if (req.currentUser.role === Role.SUPER_ADMIN) return undefined;
+  if (req.currentUser.role === Role.SUPER_ADMIN) {
+    const officeIds = await getOrganizationOfficeIds(req.currentUser.organizationId);
+    if (officeIds !== undefined && officeIds.length === 0) {
+      throw new ForbiddenError("No offices are available in this organization yet");
+    }
+    return officeIds;
+  }
   if (req.currentUser.role !== Role.ADMIN) throw new ForbiddenError();
 
   const officeIds = await getAdminOfficeIds(req.currentUser.id);
@@ -90,6 +97,7 @@ export const manualAttendanceController = async (
   const { userId, type, officeId } = req.body;
   const officeIds = await getAttendanceOfficeScope(req);
   assertOfficeInScope(officeId, officeIds);
+  await assertUserInOrganization(userId, req.currentUser?.organizationId);
 
   const record = await manualAttendanceService(userId, type, officeId);
 
@@ -122,6 +130,7 @@ export const resetUserDeviceController = async (
   const officeIds = await getAttendanceOfficeScope(req);
   const user = await getUserByIdService(userId);
   if (!user?.officeId) throw new BadRequestError("User has no office assigned");
+  await assertUserInOrganization(userId, req.currentUser.organizationId);
   assertOfficeInScope(user.officeId, officeIds);
 
   const updatedUser = await resetUserDeviceService(userId);
@@ -151,6 +160,7 @@ export const getAttendancesController = async (
 
     const officeIds = await getAttendanceOfficeScope(req);
     const selectedOfficeIds = normalizeOfficeIds(queryOfficeId);
+    selectedOfficeIds.forEach((id) => assertOfficeInScope(id, officeIds));
 
     if (
       req.currentUser.role === Role.SUPER_ADMIN &&
@@ -209,6 +219,7 @@ export const getUserAttendancesController = async (
     req.currentUser.role === Role.AGENT
       ? undefined
       : await getAttendanceOfficeScope(req);
+  await assertUserInOrganization(userId, req.currentUser.organizationId);
   const user = await getUserByIdService(userId);
   if (!user) throw new BadRequestError("User not found");
   assertOfficeInScope(user.officeId ?? "", officeIds);
@@ -239,6 +250,7 @@ export const getOfficeAttendanceSummary = async (
   if (!officeId) throw new BadRequestError("Invalid officeId");
 
   const requestedOfficeIds = normalizeOfficeIds(officeId);
+  if (requestedOfficeIds.length === 0) throw new BadRequestError("Invalid officeId");
 
   const officeIds = await getAttendanceOfficeScope(req);
   requestedOfficeIds.forEach((id) => assertOfficeInScope(id, officeIds));
@@ -304,6 +316,7 @@ export const getDashboardStatsController = async (
     req.currentUser.role === Role.SUPER_ADMIN &&
     selectedOfficeIds.length > 0
   ) {
+    selectedOfficeIds.forEach((id) => assertOfficeInScope(id, officeIds));
     officeIds = selectedOfficeIds;
   }
 

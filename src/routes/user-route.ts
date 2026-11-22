@@ -15,11 +15,12 @@ import {
   registerUserController,
   userUpdatePasswordController,
   userUpdateProfileController,
+  updateUserProfilePictureController,
   assignOfficeToAdminController,
   removeOfficeFromAdminController,
   getAdminOfficesController,
 } from "../controllers";
-import { uploadCsvExcel } from "../utils";
+import { uploadCsvExcel, uploadProfilePicture } from "../utils";
 
 
 const router = Router();
@@ -31,6 +32,11 @@ router
 router.use(currentUserMiddleware, requireAuthMiddleware);
 
 router.route("/current-user").get(currentUserController);
+router.put(
+  "/me/profile-picture",
+  uploadProfilePicture.single("image"),
+  updateUserProfilePictureController,
+);
 
 router.post(
     "/register",

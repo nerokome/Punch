@@ -8,6 +8,7 @@ export type OfficeLocationInput = {
   latitude?: number | null;
   longitude?: number | null;
   radius?: number;
+  organizationId?: string | null;
 };
 
 export type ReturnedOfficeLocation = Omit<OfficeLocation, "createdAt" | "updatedAt">;

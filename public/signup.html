@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f7f5">
+  <title>Create your organization · Punchly</title>
+  <style>
+    :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#1b2925;background:#f6f7f5;font-synthesis:none}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;grid-template-columns:minmax(280px, .9fr) minmax(450px,1.1fr)}
+    .aside{background:#143b31;color:#f8fbf8;padding:48px clamp(28px,6vw,92px);display:flex;flex-direction:column;justify-content:space-between;min-height:100vh}
+    .brand{font-size:21px;font-weight:750;letter-spacing:-.7px}.brand span{color:#b4e7b2}.aside-copy{max-width:470px;margin:auto 0}.eyebrow{text-transform:uppercase;letter-spacing:2px;color:#b4e7b2;font-size:11px;font-weight:700}.aside h1{font-size:clamp(38px,5vw,62px);line-height:1.03;letter-spacing:-2.8px;margin:18px 0}.aside p{color:#d0dfd7;line-height:1.7;font-size:16px;max-width:400px}.aside-foot{color:#a8c3b7;font-size:12px}
+    main{display:grid;place-items:center;padding:48px 24px}.card{width:min(100%,510px)}.topline{display:flex;align-items:center;justify-content:space-between;margin-bottom:36px}.step{font-size:12px;color:#62736c}.dots{display:flex;gap:7px}.dot{width:27px;height:4px;border-radius:9px;background:#dce3df}.dot.active{background:#287858}.title{font-size:31px;letter-spacing:-1.2px;margin:0 0 8px}.subtitle{color:#6d7b75;margin:0 0 26px;font-size:14px;line-height:1.6}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.field{display:flex;flex-direction:column;gap:7px}.field.full{grid-column:1/-1}label{font-size:12px;font-weight:650;color:#33443d}input,select{width:100%;height:46px;padding:0 13px;border:1px solid #d9e0dc;border-radius:9px;background:white;color:#1b2925;font:inherit;outline:none}input:focus,select:focus{border-color:#398263;box-shadow:0 0 0 3px #3982631c}input::placeholder{color:#9aa69f}.password-wrap{position:relative}.password-wrap input{padding-right:70px}.toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);border:0;background:none;color:#527260;font-size:12px;font-weight:650;cursor:pointer}.hint{font-size:11px;color:#7d8983;line-height:1.5}.actions{margin-top:23px;display:flex;justify-content:space-between;align-items:center;gap:12px}.button{height:46px;padding:0 20px;border:0;border-radius:9px;background:#1e684a;color:#fff;font:inherit;font-weight:650;cursor:pointer}.button:hover{background:#17583d}.button:disabled{opacity:.6;cursor:wait}.text-button{border:0;background:none;color:#537064;font:inherit;font-weight:600;cursor:pointer;padding:10px 0}.error{color:#a33a31;font-size:13px;min-height:20px;margin-top:12px}.signin{text-align:center;color:#718078;font-size:13px;margin-top:24px}.signin a{color:#246b4e;text-decoration:none;font-weight:650}.upload-box{border:1px dashed #b9c9bf;border-radius:14px;padding:25px;text-align:center;background:#fbfcfb}.upload-icon{width:48px;height:48px;border-radius:14px;background:#e8f2eb;display:grid;place-items:center;color:#287858;margin:0 auto 13px;font-size:22px}.upload-box h3{font-size:15px;margin:0 0 5px}.upload-box p{font-size:12px;color:#75827b;margin:0 0 15px}.upload-box input[type=file]{height:auto;border:0;background:none;padding:0;font-size:12px;max-width:250px}.preview{width:100%;max-height:190px;object-fit:contain;margin-top:16px;border-radius:10px;display:none}.completion{padding:22px;border-radius:12px;background:#eaf4ed;color:#235c3d;line-height:1.6;font-size:14px}.hidden{display:none!important}
+    @media(max-width:850px){body{grid-template-columns:1fr}.aside{min-height:auto;padding:23px 25px}.aside-copy{margin:45px 0 24px}.aside h1{font-size:38px}.aside p{font-size:14px}.aside-foot{display:none}main{padding:36px 20px}.card{max-width:520px}}
+    @media(max-width:520px){.form-grid{grid-template-columns:1fr;gap:13px}.field.full{grid-column:auto}.topline{margin-bottom:27px}.title{font-size:28px}}
+  </style>
+</head>
+<body>
+  <aside class="aside">
+    <div class="brand">punchly<span>.</span></div>
+    <div class="aside-copy"><div class="eyebrow">People, present.</div><h1>Make work<br>run smoothly.</h1><p>Set up your organization and bring your team’s attendance, schedules, and time off together in one place.</p></div>
+    <div class="aside-foot">A clearer way to show up.</div>
+  </aside>
+  <main><div class="card">
+    <div class="topline"><span class="step" id="step-label">STEP 1 OF 2 &nbsp;·&nbsp; ORGANIZATION DETAILS</span><div class="dots"><span class="dot active" id="dot1"></span><span class="dot" id="dot2"></span></div></div>
+    <section id="signup-step">
+      <h2 class="title">Create your account</h2><p class="subtitle">Start with your organization and owner details. Your organization admin account can set up offices, schedules, and your team.</p>
+      <form id="signup-form" novalidate><div class="form-grid">
+        <div class="field full"><label for="org">Organization name</label><input id="org" name="organizationName" placeholder="e.g. Acme Studio" required maxlength="120"></div>
+        <div class="field"><label for="name">Your full name</label><input id="name" name="name" placeholder="Jane Doe" required></div>
+        <div class="field"><label for="phone">Phone number</label><input id="phone" name="phone" type="tel" placeholder="+234 800 000 0000" required></div>
+        <div class="field full"><label for="email">Work email</label><input id="email" name="email" type="email" placeholder="you@company.com" required autocomplete="email"></div>
+        <div class="field"><label for="password">Password</label><div class="password-wrap"><input id="password" name="password" type="password" minlength="6" placeholder="At least 6 characters" required><button class="toggle" type="button" id="toggle-password">Show</button></div></div>
+        <div class="field"><label for="gender">Gender</label><select id="gender" name="gender" required><option value="">Choose one</option><option value="Female">Female</option><option value="Male">Male</option></select></div>
+      </div><div class="error" id="signup-error" role="alert"></div><div class="actions"><span class="hint">By continuing, you agree to create an admin account.</span><button class="button" id="signup-button" type="submit">Continue <span aria-hidden="true">→</span></button></div></form>
+      <div class="signin">Already have an account? <a href="/login">Sign in</a></div>
+    </section>
+    <section id="image-step" class="hidden">
+      <h2 class="title">Add your organization banner</h2><p class="subtitle">Your banner will appear when you sign in. You can change it later in settings.</p>
+      <div class="upload-box"><div class="upload-icon">↑</div><h3>Choose a banner image</h3><p>JPG, PNG, or WebP · up to 5 MB</p><input id="image" type="file" accept="image/jpeg,image/png,image/webp"><img id="preview" class="preview" alt="Organization banner preview"></div>
+      <div class="error" id="image-error" role="alert"></div><div class="actions"><button class="text-button" id="back-button" type="button">← Back</button><button class="button" id="upload-button" type="button" disabled>Upload image</button></div>
+    </section>
+    <section id="done-step" class="hidden"><h2 class="title">You’re all set</h2><p class="subtitle">Your organization is ready. Sign in to finish setting up your offices and team.</p><div class="completion" id="done-message">Organization created and image uploaded.</div><div class="actions" style="justify-content:flex-end"><a class="button" href="/login" style="display:grid;place-items:center;text-decoration:none">Go to sign in →</a></div></section>
+  </div></main>
+  <script>
+    const form = document.getElementById('signup-form');
+    const api = '/api/v1/organizations';
+    let token = '';
+    const setStep = (step) => {
+      document.getElementById('signup-step').classList.toggle('hidden', step !== 1);
+      document.getElementById('image-step').classList.toggle('hidden', step !== 2);
+      document.getElementById('done-step').classList.toggle('hidden', step !== 3);
+      document.getElementById('step-label').textContent = step === 1 ? 'STEP 1 OF 2  ·  ORGANIZATION DETAILS' : step === 2 ? 'STEP 2 OF 2  ·  ORGANIZATION IMAGE' : 'SETUP COMPLETE';
+      document.getElementById('dot1').classList.toggle('active', step === 1);
+      document.getElementById('dot2').classList.toggle('active', step > 1);
+    };
+    const errorText = async (response) => {
+      const body = await response.json().catch(() => ({}));
+      return body.errors?.map(e => e.message).join('. ') || body.message || body.data?.message || 'Something went wrong. Please try again.';
+    };
+    document.getElementById('toggle-password').addEventListener('click', (event) => {
+      const input = document.getElementById('password');
+      input.type = input.type === 'password' ? 'text' : 'password';
+      event.currentTarget.textContent = input.type === 'password' ? 'Show' : 'Hide';
+    });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const error = document.getElementById('signup-error');
+      error.textContent = '';
+      if (!form.reportValidity()) return;
+      const button = document.getElementById('signup-button');
+      button.disabled = true; button.textContent = 'Creating…';
+      try {
+        const payload = Object.fromEntries(new FormData(form).entries());
+        const response = await fetch(`${api}/signup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!response.ok) throw new Error(await errorText(response));
+        const result = await response.json();
+        token = result.data?.token;
+        if (!token) throw new Error('Account was created, but sign-up could not continue. Please sign in.');
+        setStep(2);
+      } catch (err) { error.textContent = err.message; }
+      finally { button.disabled = false; button.innerHTML = 'Continue <span aria-hidden="true">→</span>'; }
+    });
+    const imageInput = document.getElementById('image');
+    imageInput.addEventListener('change', () => {
+      const file = imageInput.files[0];
+      const preview = document.getElementById('preview');
+      document.getElementById('image-error').textContent = '';
+      document.getElementById('upload-button').disabled = !file;
+      if (file) { preview.src = URL.createObjectURL(file); preview.style.display = 'block'; }
+      else { preview.removeAttribute('src'); preview.style.display = 'none'; }
+    });
+    document.getElementById('back-button').addEventListener('click', () => setStep(1));
+    document.getElementById('upload-button').addEventListener('click', async () => {
+      const file = imageInput.files[0];
+      const error = document.getElementById('image-error');
+      error.textContent = '';
+      if (!file) { error.textContent = 'Choose an image first.'; return; }
+      if (file.size > 5 * 1024 * 1024) { error.textContent = 'Image must be 5 MB or smaller.'; return; }
+      const button = document.getElementById('upload-button');
+      button.disabled = true; button.textContent = 'Uploading…';
+      const body = new FormData(); body.append('image', file); body.append('imageType', 'banner');
+      try {
+        const response = await fetch(`${api}/me/image`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+        if (!response.ok) throw new Error(await errorText(response));
+        setStep(3);
+      } catch (err) { error.textContent = err.message; }
+      finally { button.disabled = !imageInput.files.length; button.textContent = 'Upload image'; }
+    });
+  </script>
+</body>
+</html>

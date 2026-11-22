@@ -64,6 +64,10 @@ app.use(function (req: Request, _: Response, next: NextFunction) {
   next();
 });
 
+app.use(express.static(path.join(__dirname, "../public")));
+app.get("/signup", (_: Request, res: Response) => {
+  res.sendFile(path.join(__dirname, "../public/signup.html"));
+});
 
 app.use(express.static(path.join(__dirname, '/../src/resources/static/assets/uploads/')))
 
@@ -79,6 +83,8 @@ app.get("/api/v1/auth/error", (_: Request, res: Response, next: NextFunction) =>
 });
 
 app.use("/api/v1", applicationRoutes);
+// Keep the original unversioned API paths working for existing clients.
+app.use(applicationRoutes);
 
 
 // Use error Middleware

@@ -32,6 +32,7 @@ type CurrentUser = {
   role: Role;
   officeId?: string | null;
   officeIds?: string[];
+  organizationId?: string | null;
 };
 
 const getAllowedOfficeIds = (currentUser: CurrentUser): string[] => {
@@ -68,6 +69,10 @@ const validateAdmin = async (
 
   if (!user) {
     throw new BadRequestError("User not found");
+  }
+
+  if (currentUser.organizationId && user.organizationId !== currentUser.organizationId) {
+    throw new ForbiddenError("This user belongs to another organization");
   }
 
   if (user.isDeleted) {
@@ -155,6 +160,10 @@ const updateWorkScheduleCore = async (
     throw new BadRequestError("Work schedule not found");
   }
 
+  if (currentUser.organizationId && schedule.user.organizationId !== currentUser.organizationId) {
+    throw new ForbiddenError("This schedule belongs to another organization");
+  }
+
   await validateAdmin(tx, currentUser, schedule.userId);
 
   if (data.officeDays && data.officeDays.length > 0) {
@@ -216,6 +225,7 @@ const updateWorkScheduleCore = async (
           email: true,
           officeId: true,
           role: true,
+          organizationId: true,
         },
       },
     },
@@ -333,10 +343,12 @@ export const updateWorkScheduleService = async (
 
 export const getUserWorkSchedulesService = async (
   userId: string,
+  organizationId?: string | null,
 ): Promise<WorkSchedule[]> => {
   return await prisma.workSchedule.findMany({
     where: {
       userId,
+      ...(organizationId ? { user: { organizationId } } : {}),
     },
     include: {
       user: {
@@ -359,11 +371,14 @@ export const getAllWorkSchedulesService = async (currentUser: {
   role: Role;
   officeId?: string | null;
   officeIds?: string[];
+  organizationId?: string | null;
 }): Promise<WorkSchedule[]> => {
   const allowedOfficeIds = getAllowedOfficeIds(currentUser as CurrentUser);
 
   const where =
-    currentUser.role === Role.SUPER_ADMIN || allowedOfficeIds.length === 0
+    currentUser.role === Role.SUPER_ADMIN && currentUser.organizationId
+      ? { user: { organizationId: currentUser.organizationId } }
+      : currentUser.role === Role.SUPER_ADMIN || allowedOfficeIds.length === 0
       ? {}
       : {
           user: {
@@ -394,8 +409,9 @@ export const getAllWorkSchedulesService = async (currentUser: {
 
 export const getWorkScheduleByIdService = async (
   scheduleId: string,
+  organizationId?: string | null,
 ): Promise<WorkSchedule | null> => {
-  return await prisma.workSchedule.findUnique({
+  const schedule = await prisma.workSchedule.findUnique({
     where: {
       id: scheduleId,
     },
@@ -407,10 +423,15 @@ export const getWorkScheduleByIdService = async (
           email: true,
           officeId: true,
           role: true,
+          organizationId: true,
         },
       },
     },
   });
+  if (organizationId && schedule?.user && schedule.user.organizationId !== organizationId) {
+    throw new ForbiddenError("This schedule belongs to another organization");
+  }
+  return schedule;
 };
 
 export const deleteWorkScheduleService = async (
@@ -418,6 +439,7 @@ export const deleteWorkScheduleService = async (
     role: Role;
     officeId?: string | null;
     officeIds?: string[];
+    organizationId?: string | null;
   },
   scheduleId: string,
 ): Promise<WorkSchedule> => {
@@ -436,6 +458,10 @@ export const deleteWorkScheduleService = async (
 
   if (schedule.user.isDeleted) {
     throw new BadRequestError("User has been deleted");
+  }
+
+  if (currentUser.organizationId && schedule.user.organizationId !== currentUser.organizationId) {
+    throw new ForbiddenError("This schedule belongs to another organization");
   }
 
   if (

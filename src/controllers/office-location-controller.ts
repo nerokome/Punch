@@ -7,6 +7,7 @@ import {
 import { BadRequestError, ForbiddenError, NotFoundError } from "../errors";
 import moment from "moment";
 import { prisma } from "../client";
+import { assertOfficeInOrganization, assertShiftInOrganization, assertUserInOrganization } from "../helpers/organization-access";
 import {
   createOfficeLocationService,
   getAllOfficeLocationsService,
@@ -45,9 +46,23 @@ export const createOfficeController = async (
             latitude: parseCoordinate(latitude),
             longitude: parseCoordinate(longitude),
             radius: parseCoordinate(radius),
+            organizationId: req.currentUser?.organizationId,
         };
   
         const record = await createOfficeLocationService(data);
+
+        // The organization owner must immediately be able to manage the office
+        // they created (and see its people through the normal admin scope).
+        if (req.currentUser?.role === "ADMIN") {
+          await prisma.adminOfficeAccess.upsert({
+            where: { adminId_officeId: { adminId: req.currentUser.id, officeId: record.id } },
+            update: {},
+            create: { adminId: req.currentUser.id, officeId: record.id },
+          });
+          if (!req.currentUser.officeId) {
+            await prisma.user.update({ where: { id: req.currentUser.id }, data: { officeId: record.id } });
+          }
+        }
 
         successResponse(res, StatusCodes.OK, {
             message: "Office Location saved successfully",
@@ -77,6 +92,7 @@ export const getAllOfficeLocationController = async (
         const officeScope = await resolveOfficeScope(
           req.currentUser.role,
           req.currentUser.id,
+          req.currentUser.organizationId,
         );
 
         const records = await getAllOfficeLocationsService(officeScope);
@@ -98,6 +114,7 @@ export const getOfficeLocationController = async (
     try {
 
         const { officeId } = req.params;
+        await assertOfficeInOrganization(officeId, req.currentUser?.organizationId);
         const record = await getOfficeLocationByOfficeId(officeId);
     
         successResponse(res, StatusCodes.OK, {
@@ -116,6 +133,7 @@ export const updateOfficeLocationController = async (
   ): Promise<void> => {
     try {
         const { officeId } = req.params;
+        await assertOfficeInOrganization(officeId, req.currentUser?.organizationId);
         const {
             name,
             address,
@@ -152,6 +170,7 @@ export const createShiftController = async (
 ): Promise<void> => {
   try {
     const { name, startTime, endTime, officeId } = req.body;
+    await assertOfficeInOrganization(officeId, req.currentUser?.organizationId);
     const data = { name, startTime, endTime, officeId };
     const shift = await createShiftService(data);
     successResponse(res, StatusCodes.OK, {
@@ -170,6 +189,7 @@ export const getShiftsByOfficeIdController = async (
 ): Promise<void> => {
   try {
     const { officeId } = req.params;
+    await assertOfficeInOrganization(officeId, req.currentUser?.organizationId);
     const shifts = await getShiftsByOfficeIdService(officeId);
     successResponse(res, StatusCodes.OK, {
       message: "Shifts fetched successfully",
@@ -187,6 +207,7 @@ export const updateShiftController = async (
 ): Promise<void> => {
   try {
     const { shiftId } = req.params;
+    await assertShiftInOrganization(shiftId, req.currentUser?.organizationId);
     const { name, startTime, endTime } = req.body;
     const data = { name, startTime, endTime };
     const shift = await updateShiftService(shiftId, data);
@@ -206,6 +227,7 @@ export const deleteShiftController = async (
 ): Promise<void> => {
   try {
     const { shiftId } = req.params;
+    await assertShiftInOrganization(shiftId, req.currentUser?.organizationId);
     const shift = await deleteShiftService(shiftId);
     successResponse(res, StatusCodes.OK, {
       message: "Shift deleted successfully",
@@ -223,6 +245,8 @@ export const assignUserToShiftController = async (
 ): Promise<void> => {
   try {
     const { userId, shiftId } = req.body;
+    await assertUserInOrganization(userId, req.currentUser?.organizationId);
+    await assertShiftInOrganization(shiftId, req.currentUser?.organizationId);
     const user = await assignUserToShiftService(userId, shiftId);
     successResponse(res, StatusCodes.OK, {
       message: "User assigned to shift successfully",

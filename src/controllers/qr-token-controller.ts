@@ -32,6 +32,7 @@ export const generateQRTOkenController = async (
         const officeScope = await resolveOfficeScope(
           req.currentUser.role as Role,
           req.currentUser.id,
+          req.currentUser.organizationId,
         );
 
         // undefined => SUPER_ADMIN, unrestricted.

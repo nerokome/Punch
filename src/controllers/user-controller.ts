@@ -27,6 +27,9 @@ import {
 } from "../services";
 import { KYCStatus, Role } from "@prisma/client";
 import moment from "moment";
+import { absoluteAssetUrl } from "../helpers";
+import { updateUserProfilePictureService } from "../services/user-service";
+import { assertOfficeInOrganization, assertUserInOrganization } from "../helpers/organization-access";
 
 export const registerUserController = async (req: Request, res: Response): Promise<void> => {
     const { 
@@ -47,6 +50,7 @@ export const registerUserController = async (req: Request, res: Response): Promi
     let office = await getOfficeLocationByOfficeId(officeId);
     if (!office)
       throw new BadRequestError(`Office with the id ${officeId} does not exist`);
+    await assertOfficeInOrganization(officeId, req.currentUser?.organizationId);
 
     const data = await registerUserService({
         name,
@@ -56,7 +60,8 @@ export const registerUserController = async (req: Request, res: Response): Promi
         officeId,
         role,
         gender,
-        isActive: KYCStatus.active
+        isActive: KYCStatus.active,
+        organizationId: req.currentUser?.organizationId ?? office.organizationId ?? null,
     });
   
   
@@ -68,10 +73,9 @@ export const registerUserController = async (req: Request, res: Response): Promi
 
 export const loginUserController = async (req: Request, res: Response): Promise<void> => {
     const { email, password } = req.body;
-  
-    const user = await getUserWithOfficesService(
-      (await getUserByEmailService(email))?.id || ""
-    );
+    const userByEmail = await getUserByEmailService(email);
+    if (!userByEmail) throw new BadRequestError("Invalid credentials");
+    const user = await getUserWithOfficesService(userByEmail.id, userByEmail.organizationId);
   
     if (!user) throw new BadRequestError("Invalid credentials");
   
@@ -103,6 +107,7 @@ export const loginUserController = async (req: Request, res: Response): Promise<
     isVerified: user.isVerified,
     isActive: user.isActive,
     officeId: user.officeId,
+    organizationId: user.organizationId,
     officeIds,
 });
   
@@ -120,12 +125,23 @@ export const currentUserController = async (req: Request, res: Response): Promis
         return
     }
   
-    const currentUser = await getUserWithOfficesService(req.currentUser.id)
+    const currentUser = await getUserWithOfficesService(req.currentUser.id, req.currentUser.organizationId)
     delete currentUser?.password;
     
     successResponse(res, StatusCodes.OK, {
         message: "success",
         currentUser
+    });
+};
+
+export const updateUserProfilePictureController = async (req: Request, res: Response): Promise<void> => {
+    if (!req.currentUser) throw new BadRequestError("User not authorized");
+    if (!req.file) throw new BadRequestError("Choose a profile picture to upload");
+    const profilePictureUrl = absoluteAssetUrl(req, `/profiles/${req.file.filename}`);
+    const user = await updateUserProfilePictureService(req.currentUser.id, profilePictureUrl);
+    successResponse(res, StatusCodes.OK, {
+      message: "Profile picture updated",
+      user,
     });
 };
 
@@ -139,8 +155,10 @@ export const getUsersController = async (req: Request, res: Response): Promise<v
     const { page, limit, search, officeId: queryOfficeId } = req.query;
 
     if (req.currentUser.role === Role.SUPER_ADMIN) {
-      // Super admins can see all users, or filter by specific office
+      // Platform super admins are unrestricted; organization owners are
+      // filtered by their organization in the service.
       if (queryOfficeId && typeof queryOfficeId === 'string' && queryOfficeId.trim() !== '') {
+        await assertOfficeInOrganization(queryOfficeId, req.currentUser.organizationId);
         officeFilter = queryOfficeId;
       }
     } else if (req.currentUser.role === Role.ADMIN) {
@@ -161,6 +179,7 @@ export const getUsersController = async (req: Request, res: Response): Promise<v
     const users = await getAllUsersService({
       officeId: officeFilter,
       officeIds: officeIds,
+      organizationId: req.currentUser.organizationId,
       page: page as any,
       limit: limit as any,
       searchTerm: search as string,
@@ -171,9 +190,10 @@ export const getUsersController = async (req: Request, res: Response): Promise<v
 export const getUserByIdController = async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
   
-    const user = await getUserWithOfficesService(id);
+    const user = await getUserWithOfficesService(id, req.currentUser?.organizationId);
   
     if (!user) throw new NotFoundError("User not found");
+    await assertUserInOrganization(id, req.currentUser?.organizationId);
   
     delete user.password;
   
@@ -194,6 +214,10 @@ export const userUpdateProfileController = async (req: Request, res: Response): 
         officeId: req.body.officeId || user.officeId,
         gender: req.body.gender || user.gender,
     }
+
+    if (req.body.officeId) {
+      await assertOfficeInOrganization(req.body.officeId, user.organizationId);
+    }
   
     await updateUserService(user.id, payload)
   
@@ -208,8 +232,17 @@ export const adminUpdateUserController = async (req: Request, res: Response): Pr
 
     const user = await getUserByIdService(id);
     if (!user) throw new NotFoundError("User not found");
+    await assertUserInOrganization(id, req.currentUser?.organizationId);
 
     const { name, email, phone, gender, officeId, role, isActive } = req.body;
+
+    // The platform root account is provisioned only by the seed workflow.
+    if (role === Role.SUPER_ADMIN) {
+      throw new ForbiddenError("The global super admin role cannot be assigned through this endpoint");
+    }
+    if (user.role === Role.SUPER_ADMIN && role !== undefined) {
+      throw new ForbiddenError("The global super admin role cannot be changed through this endpoint");
+    }
 
     if (email && email !== user.email) {
         const existing = await getUserByEmailService(email);
@@ -219,6 +252,7 @@ export const adminUpdateUserController = async (req: Request, res: Response): Pr
     if (officeId) {
         const office = await getOfficeLocationByOfficeId(officeId);
         if (!office) throw new BadRequestError(`Office with id ${officeId} does not exist`);
+        await assertOfficeInOrganization(officeId, req.currentUser?.organizationId);
     }
 
     const payload: Record<string, unknown> = {};
@@ -226,7 +260,13 @@ export const adminUpdateUserController = async (req: Request, res: Response): Pr
     if (email !== undefined) payload.email = email;
     if (phone !== undefined) payload.phone = phone;
     if (gender !== undefined) payload.gender = gender;
-    if (officeId !== undefined) payload.officeId = officeId;
+    if (officeId !== undefined) {
+      payload.officeId = officeId;
+      if (!req.currentUser?.organizationId) {
+        const office = await getOfficeLocationByOfficeId(officeId);
+        payload.organizationId = office?.organizationId ?? null;
+      }
+    }
     if (role !== undefined) payload.role = role;
     if (isActive !== undefined) payload.isActive = isActive;
 
@@ -240,10 +280,11 @@ export const bulkUploadUsersController = async (req: Request, res: Response): Pr
 
     const office = await getOfficeLocationByOfficeId(officeId);
     if (!office) throw new BadRequestError(`Office with id ${officeId} does not exist`);
+    await assertOfficeInOrganization(officeId, req.currentUser?.organizationId);
 
     if (!req.file) throw new BadRequestError("No file uploaded. Send a CSV or Excel file in the 'file' field");
 
-    const result = await bulkUploadUsersService(req.file.buffer, officeId);
+    const result = await bulkUploadUsersService(req.file.buffer, officeId, req.currentUser?.organizationId ?? office.organizationId ?? null);
 
     successResponse(res, StatusCodes.CREATED, {
         message: `Bulk upload complete. ${result.created} user(s) created.`,
@@ -298,6 +339,8 @@ export const userUpdatePasswordController = async (req: Request, res: Response):
 
 export const assignOfficeToAdminController = async (req: Request, res: Response): Promise<void> => {
     const { adminId, officeId } = req.params;
+    await assertUserInOrganization(adminId, req.currentUser?.organizationId);
+    await assertOfficeInOrganization(officeId, req.currentUser?.organizationId);
 
     const access = await assignOfficeToAdminService(adminId, officeId);
 
@@ -309,6 +352,8 @@ export const assignOfficeToAdminController = async (req: Request, res: Response)
 
 export const removeOfficeFromAdminController = async (req: Request, res: Response): Promise<void> => {
     const { adminId, officeId } = req.params;
+    await assertUserInOrganization(adminId, req.currentUser?.organizationId);
+    await assertOfficeInOrganization(officeId, req.currentUser?.organizationId);
 
     await removeOfficeFromAdminService(adminId, officeId);
 
@@ -319,6 +364,7 @@ export const removeOfficeFromAdminController = async (req: Request, res: Respons
 
 export const getAdminOfficesController = async (req: Request, res: Response): Promise<void> => {
     const { adminId } = req.params;
+    await assertUserInOrganization(adminId, req.currentUser?.organizationId);
 
     const offices = await getAdminOfficesService(adminId);
 
